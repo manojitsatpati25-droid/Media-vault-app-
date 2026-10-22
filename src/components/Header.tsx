@@ -32,8 +32,8 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-500 p-0.5 shadow-lg shadow-cyan-500/20 overflow-hidden shrink-0">
               <img
-                src="/src/assets/images/app_icon_1785839979351.jpg"
-                alt="Media Vault 📹"
+                src="/src/assets/images/media_vault_logo_1792679073689.jpg"
+                alt="Media Vault"
                 className="w-full h-full object-cover rounded-[10px]"
                 referrerPolicy="no-referrer"
               />
