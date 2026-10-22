@@ -1,0 +1,6 @@
+# Ensure gradlew has UNIX line endings and jar files are binary
+* text=auto
+
+*.jar binary
+gradlew text eol=lf
+*.bat text eol=crlf

@@ -38,8 +38,12 @@ jobs:
         run: |
           npx cap sync android
 
-      - name: Set execute permission for Gradle wrapper
+      - name: Validate and ensure Gradle wrapper
         run: |
+          if ! unzip -t android/gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+            echo "Gradle wrapper jar is missing or corrupted, downloading clean wrapper..."
+            curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v8.14.3/gradle/wrapper/gradle-wrapper.jar
+          fi
           chmod +x android/gradlew
 
       - name: Build Debug APK with Gradle
