@@ -1,0 +1,6 @@
+{
+  "name": "Media Vault 📹",
+  "description": "Upload platform with phone number authentication to upload images and videos, search media by name across all users, and get AI insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
