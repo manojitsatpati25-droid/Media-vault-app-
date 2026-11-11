@@ -20,6 +20,7 @@ import {
   User,
   Check,
   Download,
+  Bookmark,
 } from 'lucide-react';
 import { MediaItem, UserProfile } from '../types';
 import { formatTimeAgo, formatNumber } from '../utils/storage';
@@ -32,6 +33,8 @@ interface MediaDetailModalProps {
   onAddComment: (id: string, text: string, author: string) => void;
   user: UserProfile | null;
   onOpenAuth: () => void;
+  isSaved?: boolean;
+  onToggleSave?: (item: MediaItem) => void;
 }
 
 export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
@@ -40,6 +43,9 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   onLike,
   onAddComment,
   user,
+  onOpenAuth,
+  isSaved = false,
+  onToggleSave,
 }) => {
   // Retain the last active media item during exit animations so content persists as it slides out
   const activeItemRef = useRef<MediaItem | null>(item);
@@ -381,6 +387,21 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {onToggleSave && (
+                  <button
+                    onClick={() => onToggleSave(displayItem)}
+                    title={isSaved ? "Saved in Library (Click to remove)" : "Save / Watch Later"}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                      isSaved
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20'
+                        : 'bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-amber-400 border-slate-700/80 hover:border-amber-500/40'
+                    }`}
+                  >
+                    <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-amber-400 text-amber-400' : 'text-slate-400'}`} />
+                    <span className="hidden sm:inline">{isSaved ? 'Saved' : 'Save'}</span>
+                  </button>
+                )}
+
                 <button
                   onClick={handleDownload}
                   disabled={isDownloading}
@@ -548,8 +569,8 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Like, Download & Share Action Buttons */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* Like, Save, Download & Share Action Buttons */}
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
                       <button
                         onClick={() => onLike(displayItem.id)}
                         className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-rose-400 border border-slate-700/80 transition-all active:scale-95 text-xs font-semibold cursor-pointer"
@@ -557,6 +578,21 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                         <Heart className="w-4 h-4 fill-rose-500/30 text-rose-400" />
                         <span>{formatNumber(displayItem.likes)}</span>
                       </button>
+
+                      {onToggleSave && (
+                        <button
+                          onClick={() => onToggleSave(displayItem)}
+                          title={isSaved ? "Saved in My Library (Click to remove)" : "Save to My Library / Watch Later"}
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border transition-all active:scale-95 text-xs font-semibold cursor-pointer ${
+                            isSaved
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20'
+                              : 'bg-slate-800/90 hover:bg-amber-500/10 text-slate-200 hover:text-amber-300 border-slate-700/80 hover:border-amber-500/40'
+                          }`}
+                        >
+                          <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-amber-400 text-amber-400' : 'text-slate-400'}`} />
+                          <span>{isSaved ? 'Saved' : 'Watch Later'}</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={handleDownload}

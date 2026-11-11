@@ -1,0 +1,180 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information stored in Firestore",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique user ID matching Firebase Auth UID",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the user",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address",
+          "maxLength": 120
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Avatar photo URL",
+          "maxLength": 500
+        },
+        "joinedAt": {
+          "type": "string",
+          "description": "ISO timestamp of account creation",
+          "maxLength": 50
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short user bio or status",
+          "maxLength": 280
+        },
+        "isVerified": {
+          "type": "boolean",
+          "description": "Whether user is verified"
+        },
+        "authProvider": {
+          "type": "string",
+          "description": "Authentication provider method",
+          "enum": ["google", "password", "phone"]
+        }
+      },
+      "required": ["id", "name", "joinedAt"]
+    },
+    "SavedItem": {
+      "title": "SavedItem",
+      "description": "User bookmarked or watch-later media item saved in their library",
+      "type": "object",
+      "properties": {
+        "mediaId": {
+          "type": "string",
+          "description": "ID of the bookmarked media item",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID",
+          "maxLength": 128
+        },
+        "savedAt": {
+          "type": "string",
+          "description": "ISO timestamp when the item was saved",
+          "maxLength": 50
+        },
+        "media": {
+          "type": "object",
+          "description": "Embedded snapshot of the saved media item for fast offline & library viewing"
+        }
+      },
+      "required": ["mediaId", "userId", "savedAt"]
+    },
+    "MediaItem": {
+      "title": "MediaItem",
+      "description": "Encrypted or uploaded media metadata in Media Vault",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique ID for the media document",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the media",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the media",
+          "maxLength": 2000
+        },
+        "mediaType": {
+          "type": "string",
+          "description": "Media type (image or video)",
+          "enum": ["image", "video"]
+        },
+        "url": {
+          "type": "string",
+          "description": "Media asset URL",
+          "maxLength": 1000
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "description": "Thumbnail preview URL",
+          "maxLength": 1000
+        },
+        "category": {
+          "type": "string",
+          "description": "Category for media categorization",
+          "maxLength": 50
+        },
+        "author": {
+          "type": "string",
+          "description": "Author display name",
+          "maxLength": 80
+        },
+        "authorAvatar": {
+          "type": "string",
+          "description": "Author avatar photo URL",
+          "maxLength": 500
+        },
+        "views": {
+          "type": "number",
+          "description": "Total view count"
+        },
+        "likes": {
+          "type": "number",
+          "description": "Total like count"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of media creation",
+          "maxLength": 50
+        },
+        "fileSize": {
+          "type": "string",
+          "description": "Formatted file size string",
+          "maxLength": 50
+        },
+        "dimensions": {
+          "type": "string",
+          "description": "Dimensions string",
+          "maxLength": 50
+        },
+        "duration": {
+          "type": "string",
+          "description": "Duration string",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "title", "mediaType", "url", "author", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document owned by the user"
+    },
+    "/users/{userId}/saved/{mediaId}": {
+      "schema": "SavedItem",
+      "description": "User-specific sub-collection of saved / watch-later media items in their library"
+    },
+    "/media/{mediaId}": {
+      "schema": "MediaItem",
+      "description": "Media items uploaded by users visible to all users"
+    }
+  }
+}

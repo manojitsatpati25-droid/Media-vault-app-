@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Upload, Film, Image as ImageIcon, Sparkles, X, Clapperboard, Phone, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { Search, Upload, Film, Image as ImageIcon, Sparkles, X, Clapperboard, LogIn, UserPlus, User as UserIcon, ShieldCheck } from 'lucide-react';
 import { MediaType, UserProfile } from '../types';
 
 interface HeaderProps {
@@ -9,7 +9,7 @@ interface HeaderProps {
   onMediaTypeChange: (type: MediaType) => void;
   onOpenUpload: () => void;
   user: UserProfile | null;
-  onOpenAuth: () => void;
+  onOpenAuth: (mode?: 'login' | 'register') => void;
   onOpenProfile: () => void;
 }
 
@@ -126,12 +126,12 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">Upload</span>
             </button>
 
-            {/* Phone Authentication Account Button */}
+            {/* Firebase Authentication: User Profile or Login & Register Buttons */}
             {user ? (
               <button
                 onClick={onOpenProfile}
                 className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 bg-slate-950 hover:bg-slate-800/80 border border-slate-800 rounded-xl transition-all cursor-pointer group"
-                title="Your Phone Profile"
+                title="Your Vault Account"
               >
                 <img
                   src={user.avatarUrl}
@@ -143,18 +143,29 @@ export const Header: React.FC<HeaderProps> = ({
                     {user.name}
                   </span>
                   <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-0.5">
-                    <ShieldCheck className="w-3 h-3" /> Verified
+                    <ShieldCheck className="w-3 h-3" /> {user.authProvider ? `${user.authProvider.toUpperCase()} Auth` : 'Verified'}
                   </span>
                 </div>
               </button>
             ) : (
-              <button
-                onClick={onOpenAuth}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 transition-all cursor-pointer"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                <span>Phone Login</span>
-              </button>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  onClick={() => onOpenAuth('login')}
+                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-slate-950 hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer shadow-sm"
+                  title="Sign in with existing account"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Login</span>
+                </button>
+                <button
+                  onClick={() => onOpenAuth('register')}
+                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs font-bold text-cyan-300 bg-gradient-to-r from-cyan-950/70 to-indigo-950/70 hover:from-cyan-900/80 hover:to-indigo-900/80 border border-cyan-500/40 hover:border-cyan-400 transition-all cursor-pointer shadow-md shadow-cyan-950/50"
+                  title="Register new account"
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-cyan-300" />
+                  <span>Register</span>
+                </button>
+              </div>
             )}
 
           </div>

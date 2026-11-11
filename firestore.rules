@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Connectivity test probe
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // User Profile: PII isolated & private to account owner
+    function isValidUserProfile(data) {
+      return data.id is string && data.id.size() <= 128 && data.id == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.joinedAt is string && data.joinedAt.size() <= 50
+        && (!('email' in data) || (data.email is string && data.email.size() <= 120))
+        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 500))
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 280))
+        && (!('isVerified' in data) || data.isVerified is bool)
+        && (!('authProvider' in data) || (data.authProvider in ['google', 'password', 'phone']));
+    }
+
+    // Saved / Watch Later items subcollection validation
+    function isValidSavedItem(data, mediaId) {
+      return data.mediaId is string && data.mediaId.size() <= 128 && data.mediaId == mediaId
+        && data.userId is string && data.userId.size() <= 128 && data.userId == request.auth.uid
+        && data.savedAt is string && data.savedAt.size() <= 50
+        && (!('media' in data) || data.media is map);
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false; // Never allow blanket PII listing
+      allow create: if isOwner(userId) && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().keys().hasAll(['id', 'name', 'joinedAt'])
+        && incoming().keys().hasOnly(['id', 'name', 'joinedAt', 'email', 'avatarUrl', 'bio', 'isVerified', 'authProvider']);
+      allow update: if isOwner(userId) && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().id == existing().id
+        && incoming().joinedAt == existing().joinedAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'avatarUrl', 'bio', 'isVerified', 'authProvider']);
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // User-specific Saved / Watch Later library subcollection
+      match /saved/{mediaId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(mediaId)
+          && isValidSavedItem(incoming(), mediaId)
+          && incoming().keys().hasAll(['mediaId', 'userId', 'savedAt'])
+          && incoming().keys().hasOnly(['mediaId', 'userId', 'savedAt', 'media']);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(mediaId)
+          && isValidSavedItem(incoming(), mediaId)
+          && incoming().mediaId == existing().mediaId
+          && incoming().userId == existing().userId
+          && incoming().savedAt == existing().savedAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['media']);
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(mediaId);
+      }
+    }
+
+    // Media Vault items: all users see all videos and images uploaded
+    function isValidMedia(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && data.mediaType is string && (data.mediaType == 'image' || data.mediaType == 'video')
+        && data.url is string && data.url.size() <= 1000
+        && data.author is string && data.author.size() <= 80
+        && data.createdAt is string && data.createdAt.size() <= 50
+        && (!('userId' in data) || (data.userId is string && data.userId.size() <= 128))
+        && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 1000))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 50))
+        && (!('authorAvatar' in data) || (data.authorAvatar is string && data.authorAvatar.size() <= 500))
+        && (!('fileSize' in data) || (data.fileSize is string && data.fileSize.size() <= 50))
+        && (!('dimensions' in data) || (data.dimensions is string && data.dimensions.size() <= 50))
+        && (!('duration' in data) || (data.duration is string && data.duration.size() <= 50))
+        && (!('views' in data) || data.views is number)
+        && (!('likes' in data) || data.likes is number)
+        && (!('tags' in data) || (data.tags is list && data.tags.size() <= 20))
+        && (!('comments' in data) || (data.comments is list && data.comments.size() <= 100))
+        && (!('aiSummary' in data) || (data.aiSummary is string && data.aiSummary.size() <= 1000))
+        && (!('isFeatured' in data) || data.isFeatured is bool);
+    }
+
+    match /media/{mediaId} {
+      // All users can see all uploaded videos and images
+      allow get: if isValidId(mediaId);
+      allow list: if true;
+
+      // Users can upload media
+      allow create: if isValidId(mediaId)
+        && isValidMedia(incoming())
+        && incoming().keys().hasAll(['id', 'title', 'mediaType', 'url', 'author', 'createdAt'])
+        && incoming().keys().hasOnly(['id', 'userId', 'title', 'description', 'mediaType', 'url', 'thumbnailUrl', 'category', 'tags', 'author', 'authorAvatar', 'views', 'likes', 'createdAt', 'fileSize', 'dimensions', 'duration', 'comments', 'aiSummary', 'isFeatured']);
+
+      // Updates for likes, views, comments or owner edits
+      allow update: if isValidId(mediaId)
+        && isValidMedia(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Public view increment
+          (incoming().diff(existing()).affectedKeys().hasOnly(['views'])
+            && incoming().views == existing().views + 1)
+          ||
+          // Public like increment
+          (incoming().diff(existing()).affectedKeys().hasOnly(['likes'])
+            && incoming().likes == existing().likes + 1)
+          ||
+          // Add comment
+          (incoming().diff(existing()).affectedKeys().hasOnly(['comments']))
+          ||
+          // Owner metadata edit
+          (isSignedIn() && existing().userId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'thumbnailUrl', 'category', 'tags', 'views', 'likes', 'comments', 'aiSummary', 'isFeatured']))
+        );
+
+      allow delete: if isSignedIn() && isValidId(mediaId) && existing().userId == request.auth.uid;
+    }
+  }
+}

@@ -4,12 +4,26 @@ import { StatsBar } from './components/StatsBar';
 import { MediaGrid } from './components/MediaGrid';
 import { UploadModal } from './components/UploadModal';
 import { MediaDetailModal } from './components/MediaDetailModal';
-import { PhoneAuthModal } from './components/PhoneAuthModal';
+import { FirebaseAuthModal } from './components/FirebaseAuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
-import { MediaItem, MediaType, MediaCategory, UserProfile } from './types';
+import { MediaItem, MediaType, MediaCategory, UserProfile, AuthMode, SavedItem } from './types';
 import { INITIAL_MEDIA_ITEMS } from './data/sampleMedia';
 import { getLocalMedia, saveLocalMedia, updateLocalMediaItem } from './utils/storage';
 import { safeApiCall } from './utils/api';
+import { toggleSaveMediaInFirestore } from './lib/savedMedia';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  collection,
+  onSnapshot,
+  updateDoc,
+  increment,
+  arrayUnion,
+  setDoc,
+} from 'firebase/firestore';
+import { auth, db } from './lib/firebase';
+import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
 const CATEGORIES: MediaCategory[] = [
   'All',
@@ -32,6 +46,7 @@ export default function App() {
   // Modals state
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +61,62 @@ export default function App() {
     }
   });
 
+  // Listen to Firebase Auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const userDocRef = doc(db, 'users', fbUser.uid);
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+            const profile = snap.data() as UserProfile;
+            setUser(profile);
+            localStorage.setItem('mv_user_profile', JSON.stringify(profile));
+            return;
+          }
+        } catch (e) {
+          console.warn('Could not retrieve Firestore user document:', e);
+        }
+
+        const fallbackProfile: UserProfile = {
+          id: fbUser.uid,
+          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Vault Member',
+          email: fbUser.email || undefined,
+          avatarUrl:
+            fbUser.photoURL ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(fbUser.uid)}`,
+          joinedAt: fbUser.metadata.creationTime || new Date().toISOString(),
+          isVerified: true,
+          authProvider: (fbUser.providerData[0]?.providerId.includes('google')
+            ? 'google'
+            : 'password') as any,
+        };
+        setUser(fallbackProfile);
+        localStorage.setItem('mv_user_profile', JSON.stringify(fallbackProfile));
+      } else {
+        // If not authenticated in Firebase and no local profile, clear
+        const saved = localStorage.getItem('mv_user_profile');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (parsed.authProvider === 'google' || parsed.authProvider === 'password') {
+              setUser(null);
+              localStorage.removeItem('mv_user_profile');
+            }
+          } catch {}
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Open Auth modal with specific initial mode (login or register)
+  const handleOpenAuth = (mode: AuthMode = 'login') => {
+    setAuthMode(mode);
+    setIsAuthOpen(true);
+  };
+
   // Save or clear user session in localStorage
   const handleLoginSuccess = (profile: UserProfile) => {
     setUser(profile);
@@ -56,8 +127,14 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('Error signing out from Firebase:', e);
+    }
     setUser(null);
+    setSavedMediaMap({});
     try {
       localStorage.removeItem('mv_user_profile');
     } catch (e) {
@@ -65,7 +142,95 @@ export default function App() {
     }
   };
 
-  // Fetch media items from server and merge with local storage
+  // Saved / Watch Later items state (synced with Firestore /users/{userId}/saved)
+  const [savedMediaMap, setSavedMediaMap] = useState<Record<string, SavedItem>>({});
+
+  // Sync saved items in real time from Firestore sub-collection /users/{userId}/saved
+  useEffect(() => {
+    if (!user?.id) {
+      setSavedMediaMap({});
+      return;
+    }
+
+    try {
+      const cached = localStorage.getItem(`mv_saved_${user.id}`);
+      if (cached) {
+        setSavedMediaMap(JSON.parse(cached));
+      }
+    } catch {}
+
+    const savedColRef = collection(db, 'users', user.id, 'saved');
+    const unsubscribeSaved = onSnapshot(
+      savedColRef,
+      (snapshot) => {
+        const map: Record<string, SavedItem> = {};
+        snapshot.forEach((docSnap) => {
+          map[docSnap.id] = docSnap.data() as SavedItem;
+        });
+        setSavedMediaMap(map);
+        try {
+          localStorage.setItem(`mv_saved_${user.id}`, JSON.stringify(map));
+        } catch {}
+      },
+      (error) => {
+        console.warn('Firestore saved items onSnapshot notice:', error);
+      }
+    );
+
+    return () => unsubscribeSaved();
+  }, [user?.id]);
+
+  // Toggle save / bookmark for a media item in Firestore
+  const handleToggleSave = async (e: React.MouseEvent | null, item: MediaItem) => {
+    if (e) {
+      e.stopPropagation();
+    }
+
+    if (!user) {
+      handleOpenAuth('login');
+      return;
+    }
+
+    const isCurrentlySaved = Boolean(savedMediaMap[item.id]);
+
+    // Optimistically update local state & cache
+    setSavedMediaMap((prev) => {
+      const next = { ...prev };
+      if (isCurrentlySaved) {
+        delete next[item.id];
+      } else {
+        next[item.id] = {
+          mediaId: item.id,
+          userId: user.id,
+          savedAt: new Date().toISOString(),
+          media: item,
+        };
+      }
+      try {
+        localStorage.setItem(`mv_saved_${user.id}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    try {
+      await toggleSaveMediaInFirestore(user.id, item, isCurrentlySaved);
+    } catch (err) {
+      console.error('Failed to toggle saved item in Firestore:', err);
+    }
+  };
+
+  // Seed initial community items to Firestore so all users see full gallery immediately
+  const seedInitialMedia = async () => {
+    try {
+      for (const item of INITIAL_MEDIA_ITEMS) {
+        await setDoc(doc(db, 'media', item.id), item, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Initial Firestore seeding notice:', e);
+    }
+  };
+
+  // Fetch media items from server and merge with local storage as instant cache
   const fetchServerMedia = async () => {
     setIsLoading(true);
     try {
@@ -104,8 +269,43 @@ export default function App() {
     }
   };
 
+  // Real-time Firestore sync: All users see all videos and images uploaded by everyone!
   useEffect(() => {
     fetchServerMedia();
+
+    // Subscribe to live changes in Firestore 'media' collection
+    const mediaColRef = collection(db, 'media');
+    const unsubscribeMedia = onSnapshot(
+      mediaColRef,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const firestoreItems: MediaItem[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data() as MediaItem;
+            firestoreItems.push({
+              ...data,
+              id: docSnap.id,
+            });
+          });
+
+          // Sort newest first
+          firestoreItems.sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
+          setMediaItems(firestoreItems);
+          setIsLoading(false);
+        } else {
+          // If Firestore collection is empty, seed initial community items
+          seedInitialMedia();
+        }
+      },
+      (error) => {
+        console.warn('Firestore onSnapshot listener notice:', error);
+      }
+    );
+
+    return () => unsubscribeMedia();
   }, []);
 
   // Filter media based on search query (video/media name), type, and category
@@ -142,15 +342,26 @@ export default function App() {
       });
   }, [mediaItems, searchQuery, selectedMediaType, selectedCategory, sortBy]);
 
-  // Compute media uploaded by the currently logged-in user
+  // Compute media uploaded by the currently logged-in user from Firestore items
   const userMedia = useMemo(() => {
     if (!user) return [];
-    return mediaItems.filter(
-      (m) =>
-        m.author.toLowerCase() === user.name.toLowerCase() ||
-        m.author.includes(user.phoneNumber.slice(-4))
-    );
+    return mediaItems.filter((m) => {
+      if (m.userId && m.userId === user.id) return true;
+      if (m.author && user.name && m.author.toLowerCase() === user.name.toLowerCase()) return true;
+      if (user.email && m.author && m.author.toLowerCase() === user.email.toLowerCase()) return true;
+      if (user.phoneNumber && m.author && user.phoneNumber.length >= 4 && m.author.includes(user.phoneNumber.slice(-4))) {
+        return true;
+      }
+      return false;
+    });
   }, [mediaItems, user]);
+
+  // Saved media items materialized for "My Library" tab
+  const savedMediaList = useMemo(() => {
+    return (Object.values(savedMediaMap) as SavedItem[])
+      .map((s: SavedItem) => s.media || mediaItems.find((m) => m.id === s.mediaId))
+      .filter(Boolean) as MediaItem[];
+  }, [savedMediaMap, mediaItems]);
 
   // Check for shared media deep-link in URL search params (e.g., ?media=...)
   useEffect(() => {
@@ -188,6 +399,13 @@ export default function App() {
 
     // Persist view count locally in IndexedDB
     updateLocalMediaItem(item.id, { views: newViews });
+
+    // Notify Firestore for real-time live sync
+    try {
+      updateDoc(doc(db, 'media', item.id), {
+        views: increment(1),
+      }).catch(() => {});
+    } catch {}
 
     // Notify backend if available
     safeApiCall(`/api/media/${item.id}/view`, { method: 'POST' }).catch(() => {});
@@ -227,6 +445,13 @@ export default function App() {
     if (newLikes > 0) {
       updateLocalMediaItem(id, { likes: newLikes });
     }
+
+    // Update in Firestore for live real-time sync across all users
+    try {
+      updateDoc(doc(db, 'media', id), {
+        likes: increment(1),
+      }).catch(() => {});
+    } catch {}
 
     // Persist to backend if available
     safeApiCall(`/api/media/${id}/like`, { method: 'POST' }).catch(() => {});
@@ -272,6 +497,13 @@ export default function App() {
       updateLocalMediaItem(mediaId, { comments: updatedComments });
     }
 
+    // Persist comment to Firestore in real time
+    try {
+      updateDoc(doc(db, 'media', mediaId), {
+        comments: arrayUnion(newComment),
+      }).catch(() => {});
+    } catch {}
+
     // Send to backend if available
     safeApiCall(`/api/media/${mediaId}/comments`, {
       method: 'POST',
@@ -291,13 +523,13 @@ export default function App() {
         onMediaTypeChange={setSelectedMediaType}
         onOpenUpload={() => {
           if (!user) {
-            setIsAuthOpen(true);
+            handleOpenAuth('register');
           } else {
             setIsUploadOpen(true);
           }
         }}
         user={user}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={(mode) => handleOpenAuth(mode || 'login')}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
 
@@ -324,11 +556,13 @@ export default function App() {
           onClearSearch={() => setSearchQuery('')}
           onOpenUpload={() => {
             if (!user) {
-              setIsAuthOpen(true);
+              handleOpenAuth('register');
             } else {
               setIsUploadOpen(true);
             }
           }}
+          isMediaSaved={(id) => Boolean(savedMediaMap[id])}
+          onToggleSave={handleToggleSave}
         />
       </main>
 
@@ -339,16 +573,17 @@ export default function App() {
             <strong className="text-slate-400">Media Vault</strong> — Modern Shared Image & Video Upload Hub
           </p>
           <p className="text-slate-600">
-            Phone Verified Accounts • SMS Verification OTP • AI Content Assistant
+            Firebase Authentication • Secure Encrypted Vault • AI Content Assistant
           </p>
         </div>
       </footer>
 
-      {/* Phone Authentication Modal */}
-      <PhoneAuthModal
+      {/* Firebase Authentication Modal (Login & Register) */}
+      <FirebaseAuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={handleLoginSuccess}
+        initialMode={authMode}
       />
 
       {/* User Profile Drawer/Modal */}
@@ -357,9 +592,11 @@ export default function App() {
         onClose={() => setIsProfileOpen(false)}
         user={user}
         userMedia={userMedia}
+        savedMediaItems={savedMediaList}
         onLogout={handleLogout}
         onSelectMedia={handleSelectMedia}
         onOpenUpload={() => setIsUploadOpen(true)}
+        onToggleSave={handleToggleSave}
       />
 
       {/* Upload Platform Modal */}
@@ -378,7 +615,9 @@ export default function App() {
         onLike={(id) => handleLikeMedia(null, id)}
         onAddComment={handleAddComment}
         user={user}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={() => handleOpenAuth('login')}
+        isSaved={selectedMedia ? Boolean(savedMediaMap[selectedMedia.id]) : false}
+        onToggleSave={(item) => handleToggleSave(null, item)}
       />
     </div>
   );

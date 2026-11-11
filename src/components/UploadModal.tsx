@@ -1,8 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Upload, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { MediaCategory, MediaItem, UploadFormData, UserProfile } from '../types';
 import { safeApiCall } from '../utils/api';
 import { fileToDataUrl, generateVideoThumbnail, saveLocalMedia } from '../utils/storage';
+import { doc, setDoc } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -41,6 +43,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (user && user.name) {
+      setFormData((prev) => ({ ...prev, author: user.name }));
+    }
+  }, [user, isOpen]);
 
   if (!isOpen) return null;
 
@@ -298,6 +306,35 @@ export const UploadModal: React.FC<UploadModalProps> = ({
         }
       } catch (syncErr) {
         console.warn('Server sync skipped, persisting locally:', syncErr);
+      }
+
+      // Sync to Firestore so ALL users see this uploaded video/image in real time
+      try {
+        const firestoreDoc: any = {
+          id: finalItem.id,
+          title: finalItem.title,
+          description: finalItem.description || '',
+          mediaType: finalItem.mediaType,
+          url: finalItem.url,
+          thumbnailUrl: finalItem.thumbnailUrl || finalItem.url,
+          category: finalItem.category || 'All',
+          tags: finalItem.tags || [],
+          author: finalItem.author,
+          authorAvatar: finalItem.authorAvatar || '',
+          views: finalItem.views || 1,
+          likes: finalItem.likes || 0,
+          createdAt: finalItem.createdAt,
+          fileSize: finalItem.fileSize || '',
+          dimensions: finalItem.dimensions || '',
+          duration: finalItem.duration || '',
+          comments: finalItem.comments || [],
+        };
+        if (auth.currentUser) {
+          firestoreDoc.userId = auth.currentUser.uid;
+        }
+        await setDoc(doc(db, 'media', finalItem.id), firestoreDoc);
+      } catch (firestoreErr) {
+        console.warn('Firestore real-time sync notice:', firestoreErr);
       }
 
       // Always save to IndexedDB so item persists locally in APK and browser

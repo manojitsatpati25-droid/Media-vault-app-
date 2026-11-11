@@ -70,8 +70,47 @@ async function startServer() {
     }
     next();
   });
+  // Ensure uploads directory exists and mount static serving
+  const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    try {
+      fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    } catch (e) {
+      console.warn('Could not create uploads directory:', e);
+    }
+  }
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
-  // API ROUTES
+  // Helper to persist base64 data to static file
+  function saveBase64ToFile(dataUri: string, prefix: string): string {
+    if (!dataUri || !dataUri.startsWith('data:')) {
+      return dataUri;
+    }
+    try {
+      const matches = dataUri.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return dataUri;
+      }
+      const mime = matches[1];
+      const base64Data = matches[2];
+      let ext = 'bin';
+      if (mime.includes('image/png')) ext = 'png';
+      else if (mime.includes('image/jpeg') || mime.includes('image/jpg')) ext = 'jpg';
+      else if (mime.includes('image/webp')) ext = 'webp';
+      else if (mime.includes('image/gif')) ext = 'gif';
+      else if (mime.includes('video/mp4')) ext = 'mp4';
+      else if (mime.includes('video/webm')) ext = 'webm';
+      else if (mime.includes('video/quicktime')) ext = 'mov';
+
+      const fileName = `${prefix}-${Date.now()}.${ext}`;
+      const filePath = path.join(UPLOADS_DIR, fileName);
+      fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+      return `/uploads/${fileName}`;
+    } catch (err) {
+      console.error('Failed to save base64 to file:', err);
+      return dataUri;
+    }
+  }
   
   // GET /api/media - Fetch all media or filter by query, type, category
   app.get('/api/media', (req, res) => {
@@ -152,13 +191,19 @@ async function startServer() {
         });
       }
 
+      const mediaId = `${mediaType === 'video' ? 'vid' : 'img'}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      const savedUrl = saveBase64ToFile(url, mediaId);
+      const savedThumbnail = thumbnailUrl
+        ? saveBase64ToFile(thumbnailUrl, `${mediaId}-thumb`)
+        : (mediaType === 'image' ? savedUrl : undefined);
+
       const newItem: MediaItem = {
-        id: `${mediaType === 'video' ? 'vid' : 'img'}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: mediaId,
         title: title.trim(),
         description: (description || '').trim(),
         mediaType: mediaType === 'video' ? 'video' : 'image',
-        url,
-        thumbnailUrl: thumbnailUrl || (mediaType === 'image' ? url : undefined),
+        url: savedUrl,
+        thumbnailUrl: savedThumbnail,
         category: category || 'All',
         tags: Array.isArray(tags) ? tags : [],
         author: author || 'Anonymous Creator',

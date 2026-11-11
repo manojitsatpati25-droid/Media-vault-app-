@@ -44,20 +44,24 @@ export const StatsBar: React.FC<StatsBarProps> = ({
           </div>
 
           {/* Key Metrics Counter */}
-          <div className="hidden lg:flex items-center gap-4 text-xs text-slate-400 shrink-0">
-            <div className="flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+          <div className="flex items-center gap-2 sm:gap-4 text-xs text-slate-400 shrink-0 overflow-x-auto w-full md:w-auto pt-1 md:pt-0">
+            <div className="flex items-center gap-1.5 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-500/30 text-emerald-400 whitespace-nowrap shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-semibold text-[11px]">All Uploads Synced Live</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
               <Layers className="w-3.5 h-3.5 text-cyan-400" />
               <span>Total: <strong className="text-slate-200">{mediaItems.length}</strong></span>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+            <div className="hidden lg:flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
               <Film className="w-3.5 h-3.5 text-indigo-400" />
               <span>Videos: <strong className="text-slate-200">{totalVideos}</strong></span>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+            <div className="hidden lg:flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
               <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
               <span>Images: <strong className="text-slate-200">{totalImages}</strong></span>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+            <div className="hidden xl:flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
               <Eye className="w-3.5 h-3.5 text-amber-400" />
               <span>Views: <strong className="text-slate-200">{totalViews.toLocaleString()}</strong></span>
             </div>

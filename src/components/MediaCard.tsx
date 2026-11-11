@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Play, Heart, Eye, Film, Image as ImageIcon, MessageSquare, Sparkles } from 'lucide-react';
+import { Play, Heart, Eye, Film, Image as ImageIcon, MessageSquare, Sparkles, Bookmark } from 'lucide-react';
 import { MediaItem } from '../types';
 import { formatTimeAgo, formatNumber } from '../utils/storage';
 
@@ -8,6 +8,8 @@ interface MediaCardProps {
   searchQuery?: string;
   onSelect: (item: MediaItem) => void;
   onLike: (e: React.MouseEvent, id: string) => void;
+  isSaved?: boolean;
+  onToggleSave?: (e: React.MouseEvent, item: MediaItem) => void;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({
@@ -15,6 +17,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   searchQuery = '',
   onSelect,
   onLike,
+  isSaved = false,
+  onToggleSave,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -108,23 +112,40 @@ export const MediaCard: React.FC<MediaCardProps> = ({
           />
         )}
 
-        {/* Media Type Badge */}
-        <div className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase backdrop-blur-md border shadow-sm">
-          {item.mediaType === 'video' ? (
-            <span className="bg-indigo-950/80 text-indigo-300 border-indigo-500/40 flex items-center gap-1">
-              <Film className="w-3 h-3 text-indigo-400" /> Video
-            </span>
-          ) : (
-            <span className="bg-purple-950/80 text-purple-300 border-purple-500/40 flex items-center gap-1">
-              <ImageIcon className="w-3 h-3 text-purple-400" /> Image
-            </span>
-          )}
+        {/* Media Type & Category Badges */}
+        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase backdrop-blur-md border shadow-sm">
+            {item.mediaType === 'video' ? (
+              <span className="bg-indigo-950/80 text-indigo-300 border-indigo-500/40 flex items-center gap-1">
+                <Film className="w-3 h-3 text-indigo-400" /> Video
+              </span>
+            ) : (
+              <span className="bg-purple-950/80 text-purple-300 border-purple-500/40 flex items-center gap-1">
+                <ImageIcon className="w-3 h-3 text-purple-400" /> Image
+              </span>
+            )}
+          </div>
+          <div className="hidden sm:inline-block px-2 py-0.5 rounded-md bg-slate-950/70 text-slate-300 text-[10px] font-medium border border-slate-800 backdrop-blur-sm">
+            {item.category}
+          </div>
         </div>
 
-        {/* Category Pill */}
-        <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md bg-slate-950/70 text-slate-300 text-[10px] font-medium border border-slate-800 backdrop-blur-sm">
-          {item.category}
-        </div>
+        {/* Floating Bookmark / Save Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSave?.(e, item);
+          }}
+          title={isSaved ? 'Saved in My Library (Click to remove)' : 'Save / Watch Later'}
+          className={`absolute top-2.5 right-2.5 p-1.5 rounded-xl backdrop-blur-md border transition-all cursor-pointer z-20 ${
+            isSaved
+              ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-md shadow-amber-500/20'
+              : 'bg-slate-950/75 text-slate-400 hover:text-amber-300 border-slate-800 hover:border-slate-700'
+          }`}
+          aria-label={isSaved ? 'Remove from Saved' : 'Save for later'}
+        >
+          <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-amber-400 text-amber-400' : ''}`} />
+        </button>
       </div>
 
       {/* Card Details Body */}
@@ -186,6 +207,19 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             >
               <Heart className="w-3.5 h-3.5 text-rose-500/70 hover:fill-rose-500 transition-all" />
               <span>{formatNumber(item.likes)}</span>
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSave?.(e, item);
+              }}
+              className={`flex items-center gap-1 text-[11px] transition-colors p-1 -m-1 rounded cursor-pointer ${
+                isSaved ? 'text-amber-400' : 'text-slate-400 hover:text-amber-400'
+              }`}
+              title={isSaved ? 'Saved in My Library (Click to remove)' : 'Save / Watch Later'}
+            >
+              <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-amber-400 text-amber-400' : 'text-slate-500 hover:text-amber-400'}`} />
             </button>
           </div>
         </div>

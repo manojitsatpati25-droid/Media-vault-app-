@@ -71,16 +71,26 @@ export interface AIAnalysisRequest {
 
 export interface UserProfile {
   id: string;
-  phoneNumber: string;
-  countryCode: string;
   name: string;
+  email?: string;
+  phoneNumber?: string;
+  countryCode?: string;
   avatarUrl: string;
   joinedAt: string;
   bio?: string;
   isVerified: boolean;
+  authProvider?: 'google' | 'password' | 'phone';
 }
 
-export type AuthStep = 'phone' | 'otp' | 'profile' | 'success';
+export interface SavedItem {
+  mediaId: string;
+  userId: string;
+  savedAt: string;
+  media?: MediaItem;
+}
+
+export type AuthMode = 'login' | 'register';
+export type AuthStep = 'auth' | 'phone' | 'otp' | 'profile' | 'success';
 
 export interface AIAnalysisResponse {
   title?: string;
