@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Play, Heart, Eye, Film, Image as ImageIcon, MessageSquare, Sparkles, Bookmark } from 'lucide-react';
+import { Play, Heart, Eye, Film, Image as ImageIcon, MessageSquare, Sparkles, Bookmark, Share2 } from 'lucide-react';
 import { MediaItem } from '../types';
 import { formatTimeAgo, formatNumber } from '../utils/storage';
 
@@ -8,8 +8,10 @@ interface MediaCardProps {
   searchQuery?: string;
   onSelect: (item: MediaItem) => void;
   onLike: (e: React.MouseEvent, id: string) => void;
+  isLiked?: boolean;
   isSaved?: boolean;
   onToggleSave?: (e: React.MouseEvent, item: MediaItem) => void;
+  onShare?: (e: React.MouseEvent, item: MediaItem) => void;
 }
 
 export const MediaCard: React.FC<MediaCardProps> = ({
@@ -17,8 +19,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({
   searchQuery = '',
   onSelect,
   onLike,
+  isLiked = false,
   isSaved = false,
   onToggleSave,
+  onShare,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -193,22 +197,48 @@ export const MediaCard: React.FC<MediaCardProps> = ({
             </span>
           </div>
 
-          {/* Engagement Counters */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Engagement Counters: Views, Like (1-like-per-user), Share, and Bookmark */}
+          <div className="flex items-center gap-2.5 shrink-0">
             <div className="flex items-center gap-1 text-[11px] text-slate-400" title="Views">
               <Eye className="w-3.5 h-3.5 text-slate-500" />
               <span>{formatNumber(item.views)}</span>
             </div>
 
+            {/* Like Button (1-like-per-user toggle) */}
             <button
               onClick={(e) => onLike(e, item.id)}
-              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-rose-400 transition-colors p-1 -m-1 rounded"
-              title="Like"
+              className={`flex items-center gap-1 text-[11px] transition-all p-1 -m-1 rounded cursor-pointer ${
+                isLiked ? 'text-rose-400 font-bold' : 'text-slate-400 hover:text-rose-400'
+              }`}
+              title={isLiked ? 'You liked this (Click to unlike)' : 'Like this post'}
+              aria-label={isLiked ? 'Unlike' : 'Like'}
             >
-              <Heart className="w-3.5 h-3.5 text-rose-500/70 hover:fill-rose-500 transition-all" />
+              <Heart
+                className={`w-3.5 h-3.5 transition-all ${
+                  isLiked
+                    ? 'fill-rose-500 text-rose-500 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+                    : 'text-rose-500/70 hover:fill-rose-500/40 hover:scale-105'
+                }`}
+              />
               <span>{formatNumber(item.likes)}</span>
             </button>
 
+            {/* Real-time Share Button */}
+            {onShare && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShare(e, item);
+                }}
+                className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-cyan-400 transition-colors p-1 -m-1 rounded cursor-pointer"
+                title="Share this media"
+                aria-label="Share"
+              >
+                <Share2 className="w-3.5 h-3.5 hover:scale-105 transition-transform" />
+              </button>
+            )}
+
+            {/* Bookmark / Watch Later Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();

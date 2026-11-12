@@ -100,6 +100,7 @@ service cloud.firestore {
         && (!('duration' in data) || (data.duration is string && data.duration.size() <= 50))
         && (!('views' in data) || data.views is number)
         && (!('likes' in data) || data.likes is number)
+        && (!('likedBy' in data) || (data.likedBy is list && data.likedBy.size() <= 1000))
         && (!('tags' in data) || (data.tags is list && data.tags.size() <= 20))
         && (!('comments' in data) || (data.comments is list && data.comments.size() <= 100))
         && (!('aiSummary' in data) || (data.aiSummary is string && data.aiSummary.size() <= 1000))
@@ -115,7 +116,7 @@ service cloud.firestore {
       allow create: if isValidId(mediaId)
         && isValidMedia(incoming())
         && incoming().keys().hasAll(['id', 'title', 'mediaType', 'url', 'author', 'createdAt'])
-        && incoming().keys().hasOnly(['id', 'userId', 'title', 'description', 'mediaType', 'url', 'thumbnailUrl', 'category', 'tags', 'author', 'authorAvatar', 'views', 'likes', 'createdAt', 'fileSize', 'dimensions', 'duration', 'comments', 'aiSummary', 'isFeatured']);
+        && incoming().keys().hasOnly(['id', 'userId', 'title', 'description', 'mediaType', 'url', 'thumbnailUrl', 'category', 'tags', 'author', 'authorAvatar', 'views', 'likes', 'likedBy', 'createdAt', 'fileSize', 'dimensions', 'duration', 'comments', 'aiSummary', 'isFeatured']);
 
       // Updates for likes, views, comments or owner edits
       allow update: if isValidId(mediaId)
@@ -127,16 +128,20 @@ service cloud.firestore {
           (incoming().diff(existing()).affectedKeys().hasOnly(['views'])
             && incoming().views == existing().views + 1)
           ||
-          // Public like increment
+          // One-like-per-user toggle (updates likes count and likedBy user ID list)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'likedBy'])
+            && incoming().likes >= 0)
+          ||
+          // Like count update
           (incoming().diff(existing()).affectedKeys().hasOnly(['likes'])
-            && incoming().likes == existing().likes + 1)
+            && incoming().likes >= 0)
           ||
           // Add comment
           (incoming().diff(existing()).affectedKeys().hasOnly(['comments']))
           ||
           // Owner metadata edit
           (isSignedIn() && existing().userId == request.auth.uid
-            && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'thumbnailUrl', 'category', 'tags', 'views', 'likes', 'comments', 'aiSummary', 'isFeatured']))
+            && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'thumbnailUrl', 'category', 'tags', 'views', 'likes', 'likedBy', 'comments', 'aiSummary', 'isFeatured']))
         );
 
       allow delete: if isSignedIn() && isValidId(mediaId) && existing().userId == request.auth.uid;

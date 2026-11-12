@@ -30,8 +30,10 @@ interface MediaGridProps {
   onLikeMedia: (e: React.MouseEvent, id: string) => void;
   onClearSearch: () => void;
   onOpenUpload: () => void;
+  isMediaLiked?: (id: string) => boolean;
   isMediaSaved?: (id: string) => boolean;
   onToggleSave?: (e: React.MouseEvent, item: MediaItem) => void;
+  onShareMedia?: (e: React.MouseEvent, item: MediaItem) => void;
 }
 
 export const MediaGrid: React.FC<MediaGridProps> = ({
@@ -45,8 +47,10 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
   onLikeMedia,
   onClearSearch,
   onOpenUpload,
+  isMediaLiked,
   isMediaSaved,
   onToggleSave,
+  onShareMedia,
 }) => {
   // Browsing Mode: 'infinite' (continuous auto-loading) vs 'pages' (standard pagination)
   const [browseMode, setBrowseMode] = useState<'infinite' | 'pages'>(() => {
@@ -295,8 +299,10 @@ export const MediaGrid: React.FC<MediaGridProps> = ({
                 searchQuery={searchQuery}
                 onSelect={onSelectMedia}
                 onLike={onLikeMedia}
+                isLiked={isMediaLiked ? isMediaLiked(item.id) : false}
                 isSaved={isMediaSaved ? isMediaSaved(item.id) : false}
                 onToggleSave={onToggleSave}
+                onShare={onShareMedia}
               />
             ))}
           </div>

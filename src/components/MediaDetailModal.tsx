@@ -33,6 +33,7 @@ interface MediaDetailModalProps {
   onAddComment: (id: string, text: string, author: string) => void;
   user: UserProfile | null;
   onOpenAuth: () => void;
+  isLiked?: boolean;
   isSaved?: boolean;
   onToggleSave?: (item: MediaItem) => void;
 }
@@ -44,6 +45,7 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
   onAddComment,
   user,
   onOpenAuth,
+  isLiked = false,
   isSaved = false,
   onToggleSave,
 }) => {
@@ -573,9 +575,21 @@ export const MediaDetailModal: React.FC<MediaDetailModalProps> = ({
                     <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
                       <button
                         onClick={() => onLike(displayItem.id)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-rose-400 border border-slate-700/80 transition-all active:scale-95 text-xs font-semibold cursor-pointer"
+                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border transition-all active:scale-95 text-xs font-semibold cursor-pointer ${
+                          isLiked
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/20'
+                            : 'bg-slate-800/90 hover:bg-slate-800 text-rose-400 border border-slate-700/80'
+                        }`}
+                        title={isLiked ? "You liked this (Click to unlike)" : "Like this post"}
+                        aria-label={isLiked ? "Unlike" : "Like"}
                       >
-                        <Heart className="w-4 h-4 fill-rose-500/30 text-rose-400" />
+                        <Heart
+                          className={`w-4 h-4 transition-all ${
+                            isLiked
+                              ? 'fill-rose-500 text-rose-500 scale-110 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+                              : 'fill-rose-500/30 text-rose-400'
+                          }`}
+                        />
                         <span>{formatNumber(displayItem.likes)}</span>
                       </button>
 

@@ -139,6 +139,10 @@
           "type": "number",
           "description": "Total like count"
         },
+        "likedBy": {
+          "type": "array",
+          "description": "Array of user IDs who liked this media to enforce one like per user"
+        },
         "createdAt": {
           "type": "string",
           "description": "ISO timestamp of media creation",

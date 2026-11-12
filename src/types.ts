@@ -31,6 +31,8 @@ export interface MediaItem {
   authorAvatar?: string;
   views: number;
   likes: number;
+  likedBy?: string[];
+  userId?: string;
   createdAt: string;
   fileSize?: string;
   dimensions?: string;

@@ -11,6 +11,7 @@ import { INITIAL_MEDIA_ITEMS } from './data/sampleMedia';
 import { getLocalMedia, saveLocalMedia, updateLocalMediaItem } from './utils/storage';
 import { safeApiCall } from './utils/api';
 import { toggleSaveMediaInFirestore } from './lib/savedMedia';
+import { shareMediaItem } from './utils/share';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   doc,
@@ -20,8 +21,10 @@ import {
   updateDoc,
   increment,
   arrayUnion,
+  arrayRemove,
   setDoc,
 } from 'firebase/firestore';
+import { Check, X } from 'lucide-react';
 import { auth, db } from './lib/firebase';
 import { handleFirestoreError, OperationType } from './lib/firestoreErrors';
 
@@ -134,11 +137,73 @@ export default function App() {
     }
     setUser(null);
     setSavedMediaMap({});
+    setUserLikedMediaIds(new Set());
     try {
       localStorage.removeItem('mv_user_profile');
     } catch (e) {
       console.warn('Could not clear user session');
     }
+  };
+
+  // Real-time Share Toast notification state
+  const [shareToast, setShareToast] = useState<{ message: string; url?: string } | null>(null);
+
+  // User liked items tracking for instant 1-like-per-user responsiveness
+  const [userLikedMediaIds, setUserLikedMediaIds] = useState<Set<string>>(() => {
+    try {
+      const savedUser = localStorage.getItem('mv_user_profile');
+      const uid = savedUser ? JSON.parse(savedUser).id : 'guest';
+      const cached = localStorage.getItem(`mv_user_liked_${uid}`);
+      return cached ? new Set(JSON.parse(cached)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Re-sync user's liked items when user changes
+  useEffect(() => {
+    if (!user?.id) {
+      setUserLikedMediaIds(new Set());
+      return;
+    }
+    try {
+      const cached = localStorage.getItem(`mv_user_liked_${user.id}`);
+      if (cached) {
+        setUserLikedMediaIds(new Set(JSON.parse(cached)));
+      }
+    } catch {}
+  }, [user?.id]);
+
+  // Real-time share handler with mobile Web Share API & clipboard toast fallback
+  const handleShareMedia = async (e: React.MouseEvent | null, item: MediaItem) => {
+    if (e) e.stopPropagation();
+    const res = await shareMediaItem(item);
+    if (res.method === 'cancelled') return;
+
+    if (res.method === 'clipboard') {
+      setShareToast({
+        message: `Link copied to clipboard! Anyone with this link can view "${item.title}" in real time.`,
+        url: res.url,
+      });
+    } else {
+      setShareToast({
+        message: `Shared "${item.title}" successfully!`,
+        url: res.url,
+      });
+    }
+    setTimeout(() => {
+      setShareToast(null);
+    }, 3500);
+  };
+
+  // Helper to check if current user has liked a media item
+  const isMediaLiked = (id: string): boolean => {
+    if (!user) return false;
+    const item = mediaItems.find((m) => m.id === id);
+    return Boolean(
+      (item?.likedBy && item.likedBy.includes(user.id)) ||
+      userLikedMediaIds.has(id)
+    );
   };
 
   // Saved / Watch Later items state (synced with Firestore /users/{userId}/saved)
@@ -421,39 +486,74 @@ export default function App() {
     } catch {}
   };
 
-  // Handle like/upvote
+  // Handle like/upvote (1 like per user toggle)
   const handleLikeMedia = async (e: React.MouseEvent | null, id: string) => {
     if (e) e.stopPropagation();
 
-    let newLikes = 0;
+    if (!user) {
+      handleOpenAuth('login');
+      return;
+    }
+
+    const targetItem = mediaItems.find((m) => m.id === id);
+    if (!targetItem) return;
+
+    const isAlreadyLiked = isMediaLiked(id);
+    const newLikes = isAlreadyLiked ? Math.max(0, targetItem.likes - 1) : targetItem.likes + 1;
+    const newLikedBy = isAlreadyLiked
+      ? (targetItem.likedBy || []).filter((uid) => uid !== user.id)
+      : [...(targetItem.likedBy || []).filter((uid) => uid !== user.id), user.id];
+
+    // Optimistically update media items list
     setMediaItems((prev) =>
       prev.map((m) => {
         if (m.id === id) {
-          newLikes = m.likes + 1;
-          return { ...m, likes: newLikes };
+          return { ...m, likes: newLikes, likedBy: newLikedBy };
         }
         return m;
       })
     );
 
+    // Optimistically update currently open modal if active
     if (selectedMedia && selectedMedia.id === id) {
-      setSelectedMedia((prev) => (prev ? { ...prev, likes: prev.likes + 1 } : null));
+      setSelectedMedia((prev) => (prev ? { ...prev, likes: newLikes, likedBy: newLikedBy } : null));
     }
 
-    // Persist likes count locally in IndexedDB
-    if (newLikes > 0) {
-      updateLocalMediaItem(id, { likes: newLikes });
-    }
+    // Update local user liked cache
+    setUserLikedMediaIds((prev) => {
+      const next = new Set(prev);
+      if (isAlreadyLiked) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      try {
+        localStorage.setItem(`mv_user_liked_${user.id}`, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+
+    // Persist likes and likedBy locally in IndexedDB
+    updateLocalMediaItem(id, { likes: newLikes, likedBy: newLikedBy });
 
     // Update in Firestore for live real-time sync across all users
     try {
       updateDoc(doc(db, 'media', id), {
-        likes: increment(1),
-      }).catch(() => {});
-    } catch {}
+        likes: newLikes,
+        likedBy: isAlreadyLiked ? arrayRemove(user.id) : arrayUnion(user.id),
+      }).catch((err) => {
+        console.warn('Firestore like toggle sync error:', err);
+      });
+    } catch (err) {
+      console.warn('Failed to update like in Firestore:', err);
+    }
 
     // Persist to backend if available
-    safeApiCall(`/api/media/${id}/like`, { method: 'POST' }).catch(() => {});
+    safeApiCall(`/api/media/${id}/like`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id, isLiked: !isAlreadyLiked }),
+    }).catch(() => {});
   };
 
   // Handle upload completion
@@ -562,6 +662,8 @@ export default function App() {
           }}
           isMediaSaved={(id) => Boolean(savedMediaMap[id])}
           onToggleSave={handleToggleSave}
+          isMediaLiked={isMediaLiked}
+          onShareMedia={handleShareMedia}
         />
       </main>
 
@@ -612,12 +714,33 @@ export default function App() {
         item={selectedMedia}
         onClose={handleCloseMedia}
         onLike={(id) => handleLikeMedia(null, id)}
+        isLiked={selectedMedia ? isMediaLiked(selectedMedia.id) : false}
         onAddComment={handleAddComment}
         user={user}
         onOpenAuth={() => handleOpenAuth('login')}
         isSaved={selectedMedia ? Boolean(savedMediaMap[selectedMedia.id]) : false}
         onToggleSave={(item) => handleToggleSave(null, item)}
       />
+
+      {/* Floating Share Notification Toast */}
+      {shareToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-slate-900 border border-cyan-500/40 text-slate-100 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+            <Check className="w-4 h-4" />
+          </div>
+          <div className="text-xs">
+            <p className="font-semibold text-slate-100">{shareToast.message}</p>
+            <p className="text-slate-400 text-[10px] truncate max-w-xs">{shareToast.url}</p>
+          </div>
+          <button
+            onClick={() => setShareToast(null)}
+            className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 ml-2 cursor-pointer"
+            title="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
