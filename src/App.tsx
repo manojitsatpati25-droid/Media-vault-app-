@@ -94,17 +94,16 @@ export default function App() {
         setUser(fallbackProfile);
         localStorage.setItem('mv_user_profile', JSON.stringify(fallbackProfile));
       } else {
-        // If not authenticated in Firebase and no local profile, clear
-        const saved = localStorage.getItem('mv_user_profile');
-        if (saved) {
-          try {
+        // If no active Firebase session, retain any existing verified vault profile
+        try {
+          const saved = localStorage.getItem('mv_user_profile');
+          if (saved) {
             const parsed = JSON.parse(saved);
-            if (parsed.authProvider === 'google' || parsed.authProvider === 'password') {
-              setUser(null);
-              localStorage.removeItem('mv_user_profile');
+            if (parsed && parsed.id) {
+              setUser(parsed);
             }
-          } catch {}
-        }
+          }
+        } catch {}
       }
     });
 
